@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+data/proxy-health.json
+data/proxy-history.json
+data/proxmox-inventory.json
+*.bak*
+.env

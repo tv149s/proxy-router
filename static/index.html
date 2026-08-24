@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proxy Router Manager</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">PR</span>
+      <div>
+        <strong>Proxy Router</strong>
+        <small>管理台预览版</small>
+      </div>
+    </div>
+    <nav>
+      <button class="nav-item active" data-view="dashboard">总览</button>
+      <button class="nav-item" data-view="board">分配看板</button>
+      <button class="nav-item" data-view="vms">VM 清单</button>
+      <button class="nav-item" data-view="policies">策略</button>
+    </nav>
+    <div class="sidebar-note">
+      <span id="modeBadge">读取中</span>
+      <small>第一版默认只生成变更草稿，不写生产配置。</small>
+    </div>
+  </aside>
+
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1 id="pageTitle">总览</h1>
+        <p id="pageSubtitle">正在读取本机 live 配置...</p>
+      </div>
+      <div class="top-actions">
+        <input id="searchInput" type="search" placeholder="搜索 VM / IP / Proxy">
+        <button id="refreshBtn" class="primary">刷新</button>
+      </div>
+    </header>
+
+    <div id="draftTopBar" class="draft-topbar hidden">
+      <strong id="draftTopCount">0 项变更草稿</strong>
+      <span>这些变更尚未写入 mihomo。</span>
+      <button id="topPlanBtn">预览 diff</button>
+      <button id="topApplyBtn" class="danger">全部生效</button>
+      <button id="topClearBtn">放弃全部</button>
+    </div>
+
+    <section id="dashboard" class="view active">
+      <div class="metric-grid">
+        <article class="metric"><span>Proxy</span><strong id="metricProxy">-</strong><small>已配置通道</small></article>
+        <article class="metric"><span>已接入 VM</span><strong id="metricManaged">-</strong><small>有 DHCP + mihomo 规则</small></article>
+        <article class="metric"><span>接入不完整</span><strong id="metricPartial">-</strong><small>需要补齐配置</small></article>
+        <article class="metric"><span>当前租约</span><strong id="metricLeases">-</strong><small>dnsmasq leases</small></article>
+      </div>
+
+      <div class="two-column">
+        <section class="panel">
+          <div class="panel-head"><h2>Router 状态</h2><span id="generatedAt"></span></div>
+          <div id="routerStatus" class="status-grid"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Proxmox 接入模型</h2></div>
+          <div id="hostList" class="host-list"></div>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head"><h2>最近一小时 Proxy 命中</h2><span>来自 mihomo 日志</span></div>
+        <div id="usageChart" class="bar-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>配置提示</h2><span>未接入 proxy 是初始状态，不作为异常</span></div>
+        <div id="warnings" class="warning-list"></div>
+      </section>
+    </section>
+
+    <section id="board" class="view">
+      <div class="board-toolbar">
+        <div class="segment" id="providerFilter">
+          <button class="selected" data-provider="all">全部</button>
+          <button data-provider="Oxylabs">Oxylabs</button>
+          <button data-provider="Static">Static</button>
+          <button data-provider="Direct">Direct</button>
+        </div>
+        <div class="board-actions">
+          <p>把 VM 卡片拖到另一个 proxy，即可生成待发布变更。</p>
+          <button id="checkAllBtn">集中探测</button>
+        </div>
+      </div>
+      <div id="proxyBoard" class="proxy-board"></div>
+    </section>
+
+    <section id="vms" class="view">
+      <section class="panel">
+        <div class="panel-head"><h2>pve1 新 VM 配置</h2><span>VM101-140 单台选择 proxy 后执行切桥、DHCP、mihomo 和验证</span></div>
+        <div id="pve1ProvisionList" class="provision-list"></div>
+      </section>
+      <section class="panel full-height">
+        <div class="panel-head"><h2>VM 清单</h2><span>灰色代表未接入 proxy/初始状态</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>VM</th><th>IP</th><th>主机</th><th>Proxy</th><th>DHCP</th><th>租约</th><th>状态</th></tr></thead>
+            <tbody id="vmTable"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="policies" class="view">
+      <section class="panel">
+        <div class="panel-head"><h2>域名/IP 规则配置</h2><span>直连绕过、拦截丢弃指定域名或目标 IP，变更立即写入 mihomo 并重启生效</span></div>
+        <div class="domain-bypass-form">
+          <input id="domainInput" type="text" placeholder="域名 或 IP/CIDR">
+          <select id="domainRuleType">
+            <option value="DOMAIN-SUFFIX">后缀域名 (DOMAIN-SUFFIX)</option>
+            <option value="DOMAIN">精确域名 (DOMAIN)</option>
+            <option value="IP-CIDR">目标 IP/CIDR (IP-CIDR)</option>
+          </select>
+          <select id="domainTarget">
+            <optgroup label="直连">
+              <option value="DIRECT">DIRECT（系统默认直连）</option>
+              <option value="direct-enp1s0">direct-enp1s0</option>
+              <option value="direct-enp4s0">direct-enp4s0</option>
+            </optgroup>
+            <optgroup label="拦截">
+              <option value="REJECT">REJECT（返回错误）</option>
+              <option value="REJECT-DROP">REJECT-DROP（静默丢弃）</option>
+            </optgroup>
+          </select>
+          <select id="domainVmSelect">
+            <option value="">全部 VM</option>
+          </select>
+          <button id="addDomainBypassBtn" class="primary">添加规则</button>
+        </div>
+        <div id="domainBypassList" class="domain-bypass-list"></div>
+      </section>
+      <div class="two-column">
+        <section class="panel">
+          <div class="panel-head"><h2>流量节省策略</h2></div>
+          <div class="policy-card active-policy">
+            <strong>oneclient.sfx.ms</strong>
+            <p>当前保留阻断，Facebook scontent 已回滚。后续可在这里做启停、命中统计和回滚。</p>
+          </div>
+          <div class="policy-card muted-policy">
+            <strong>未接入 proxy</strong>
+            <p>作为初始状态展示，不计入错误；只有用户标记“应该接入”后才进入待处理。</p>
+          </div>
+          <div class="policy-card muted-policy">
+            <strong>Proxy 归档历史</strong>
+            <div id="proxyHistoryList" class="history-list">暂无归档记录</div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>待发布变更</h2><span id="changeCount">0 项</span></div>
+          <div id="changeList" class="change-list empty">暂无变更</div>
+          <div class="action-row">
+            <button id="planBtn">预览 diff</button>
+            <button id="clearChangesBtn">放弃变更</button>
+            <button id="applyBtn" class="danger">全部生效</button>
+          </div>
+          <pre id="diffOutput" class="diff-output"></pre>
+        </section>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="/app.js?v=202608230900"></script>
+</body>
+</html>
